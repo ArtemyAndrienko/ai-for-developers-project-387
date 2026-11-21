@@ -1,0 +1,1046 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Календарь звонков API",
+    "description": "Бронирование временны́х интервалов встреч. Хранилище — память Go-структур.",
+    "version": "0.0.0"
+  },
+  "tags": [],
+  "paths": {
+    "/api/bookings": {
+      "get": {
+        "operationId": "BookingsApi_list",
+        "description": "Все записи пользователя по email; прошедшие помечены past=true",
+        "parameters": [
+          {
+            "name": "email",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "explode": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The request has succeeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BookingView"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The server could not understand the request due to invalid syntax.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/bookings/{id}": {
+      "delete": {
+        "operationId": "BookingsApi_cancel",
+        "description": "Отмена Записи Посетителем. Порядок проверок: 404 — нет такой Записи; email сверяется до прочих состояний — чужой email отклоняется (409), в том числе для уже отменённой Записи; повторная отмена тем же email — успешный no-op (204); 422 — Запись уже завершилась.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "email",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "explode": false
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "There is no content to send for this request, but the headers may be useful. "
+          },
+          "404": {
+            "description": "The server cannot find the requested resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state of the server.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Client error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "operationId": "HealthApi_health",
+        "description": "Ливенс-проб: 200 { status: ok }",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The request has succeeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/meetings": {
+      "get": {
+        "operationId": "MeetingsApi_list",
+        "description": "Список доступных встреч (отменённые исключены); ?owner= фильтрует по организателю",
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "explode": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The request has succeeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Meeting"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The server could not understand the request due to invalid syntax.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "MeetingsApi_create",
+        "description": "Создать встречу на конкретный день окна доступности",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "The request has succeeded and a new resource has been created as a result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Meeting"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Client error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewMeeting"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/meetings/{id}": {
+      "delete": {
+        "operationId": "MeetingsApi_remove",
+        "description": "Отмена Встречи Организатором (мягкая): Встреча переходит в cancelled, её активные Записи — в «Отменена» одной транзакцией; повторная отмена идемпотентна (тот же 204); 404 — нет такой Встречи",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "There is no content to send for this request, but the headers may be useful. "
+          },
+          "404": {
+            "description": "The server cannot find the requested resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/meetings/{id}/availability": {
+      "get": {
+        "operationId": "MeetingsApi_availability",
+        "description": "Свободные интервалы на день встречи; 404 — встречи нет или она отменена (не в продаже)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The request has succeeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DayAvailability"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The server cannot find the requested resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/meetings/{id}/book": {
+      "post": {
+        "operationId": "MeetingsApi_book",
+        "description": "Забронировать интервал; 409 — занят (включая другие встречи организатора), 422 — встреча отменена. При одновременных запросах на пересекающиеся интервалы одного организатора ровно одна запись succeeds, остальные получают 409 (гарантия непересечения)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "The request has succeeded and a new resource has been created as a result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Booking"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The server cannot find the requested resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state of the server.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Client error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BookRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/meetings/{id}/slots": {
+      "get": {
+        "operationId": "MeetingsApi_slots",
+        "description": "Сетка интервалов дня встречи; 404 — встречи нет или она отменена (не в продаже)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The request has succeeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Slot"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The server cannot find the requested resource.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/preview/availability": {
+      "get": {
+        "operationId": "PreviewApi_availability",
+        "description": "Окно доступности на 14 дней для создаваемой встречи; шаг стартов необязателен (без него = длительность)",
+        "parameters": [
+          {
+            "name": "duration",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "explode": false
+          },
+          {
+            "name": "step",
+            "in": "query",
+            "required": false,
+            "description": "Шаг стартов: целый; нечисловое значение — 400, вне диапазона 1..duration — 422 (как при создании)",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "explode": false
+          },
+          {
+            "name": "owner",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "explode": false
+          },
+          {
+            "name": "timezone",
+            "in": "query",
+            "required": false,
+            "description": "IANA-зона-фолбэк для расчёта до первого сохранения: переданная > сохранённый профиль > UTC",
+            "schema": {
+              "type": "string"
+            },
+            "explode": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The request has succeeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DayAvailability"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The server could not understand the request due to invalid syntax.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Client error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/preview/slots": {
+      "get": {
+        "operationId": "PreviewApi_slots",
+        "description": "Сетка интервалов конкретного дня для создаваемой встречи; шаг стартов необязателен (без него = длительность)",
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "explode": false
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "explode": false
+          },
+          {
+            "name": "duration",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "explode": false
+          },
+          {
+            "name": "step",
+            "in": "query",
+            "required": false,
+            "description": "Шаг стартов: целый; нечисловое значение — 400, вне диапазона 1..duration — 422 (как при создании)",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "explode": false
+          },
+          {
+            "name": "timezone",
+            "in": "query",
+            "required": false,
+            "description": "IANA-зона-фолбэк для расчёта до первого сохранения: переданная > сохранённый профиль > UTC",
+            "schema": {
+              "type": "string"
+            },
+            "explode": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The request has succeeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Slot"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The server could not understand the request due to invalid syntax.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Client error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workhours": {
+      "get": {
+        "operationId": "WorkHoursApi_getHours",
+        "description": "Границы дня для (owner, date); по умолчанию 09:00–18:00",
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "query",
+            "required": true,
+            "description": "email организатора",
+            "schema": {
+              "type": "string"
+            },
+            "explode": false
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": true,
+            "description": "дата встречи",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "explode": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The request has succeeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkHoursView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The server could not understand the request due to invalid syntax.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "WorkHoursApi_setHours",
+        "description": "Сохранить границы только для пары (owner, date)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The request has succeeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkHoursView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The server could not understand the request due to invalid syntax.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Client error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkHoursInput"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BookRequest": {
+        "type": "object",
+        "required": [
+          "start",
+          "name",
+          "email"
+        ],
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "time"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          }
+        },
+        "description": "Тело POST /meetings/{id}/book — день берётся из встречи"
+      },
+      "Booking": {
+        "type": "object",
+        "required": [
+          "id",
+          "meetingId",
+          "date",
+          "start",
+          "end",
+          "name",
+          "email",
+          "state",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "meetingId": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "start": {
+            "type": "string",
+            "format": "time"
+          },
+          "end": {
+            "type": "string",
+            "format": "time"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/BookingState"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "description": "Бронь посетителем интервала встречи"
+      },
+      "BookingState": {
+        "type": "string",
+        "enum": [
+          "active",
+          "cancelled"
+        ],
+        "description": "Состояние Записи: cancelled — терминальное (Отмена Записи Посетителем)"
+      },
+      "BookingView": {
+        "type": "object",
+        "required": [
+          "meetingName",
+          "meetingOwnerName",
+          "meetingOwnerEmail",
+          "meetingState",
+          "past",
+          "timezone"
+        ],
+        "properties": {
+          "meetingName": {
+            "type": "string"
+          },
+          "meetingOwnerName": {
+            "type": "string"
+          },
+          "meetingOwnerEmail": {
+            "type": "string"
+          },
+          "meetingState": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MeetingState"
+              }
+            ],
+            "description": "Состояние Встречи записи: источник «Отменена» выводится (cancelled у Встречи — отмена Организатором), отдельно не хранится"
+          },
+          "past": {
+            "type": "boolean",
+            "description": "Встреча уже закончилась — попадает в группу «Прошедшие»"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA-зона Организатора встречи: в её часах стоят start/end Записи; без профиля — UTC"
+          }
+        },
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Booking"
+          }
+        ],
+        "description": "Запись для вкладки «Мои записи»: встреча, организатор (имя и/или email), статус"
+      },
+      "DayAvailability": {
+        "type": "object",
+        "required": [
+          "date",
+          "free"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "free": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "description": "Число свободных интервалов на день (бейдж «18 св.»)"
+      },
+      "ErrorBody": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "description": "Тело ошибки API"
+      },
+      "HealthResponse": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "Meeting": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "durationMin",
+          "ownerEmail",
+          "ownerName",
+          "date",
+          "state",
+          "timezone",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "durationMin": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Длительность интервала в минутах"
+          },
+          "startStepMin": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Шаг стартов сетки в минутах; отсутствие = длительность Встречи (ADR-0003)"
+          },
+          "ownerEmail": {
+            "type": "string",
+            "description": "Email организатора: по нему проверяется занятость во всех его встречах"
+          },
+          "ownerName": {
+            "type": "string",
+            "description": "Имя организатора, необязательное; видно посетителям"
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "description": "День, на который назначена встреча"
+          },
+          "state": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MeetingState"
+              }
+            ],
+            "description": "Состояние Встречи; отменённая не выдаётся в списках и не бронируется"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA-зона Организатора из его профиля: Рабочий день, календарные даты, Окно доступности и вердикт «уже прошло» считаются в ней; без профиля — UTC"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "description": "Запись на встречу"
+      },
+      "MeetingState": {
+        "type": "string",
+        "enum": [
+          "active",
+          "cancelled"
+        ],
+        "description": "Состояние Встречи: cancelled — терминальное (Отмена Встречи Организатором)"
+      },
+      "NewMeeting": {
+        "type": "object",
+        "required": [
+          "name",
+          "durationMin",
+          "ownerEmail",
+          "date"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "durationMin": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "startStepMin": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Шаг стартов: целый 1..durationMin; отсутствие = длительность (422 при выходе за диапазон)"
+          },
+          "ownerEmail": {
+            "type": "string"
+          },
+          "ownerName": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA-зона Организатора; при сохранении Встречи профиль создаётся/обновляется, пустое значение — профиль не трогать"
+          }
+        },
+        "description": "Тело POST /meetings"
+      },
+      "Slot": {
+        "type": "object",
+        "required": [
+          "start",
+          "end",
+          "status"
+        ],
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "time"
+          },
+          "end": {
+            "type": "string",
+            "format": "time"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SlotStatus"
+          }
+        },
+        "description": "Временной интервал (интервал) дня"
+      },
+      "SlotStatus": {
+        "type": "string",
+        "enum": [
+          "free",
+          "taken",
+          "past"
+        ]
+      },
+      "WorkHours": {
+        "type": "object",
+        "required": [
+          "workStart",
+          "workEnd"
+        ],
+        "properties": {
+          "workStart": {
+            "type": "string",
+            "format": "time"
+          },
+          "workEnd": {
+            "type": "string",
+            "format": "time"
+          }
+        },
+        "description": "Границы рабочего дня 'HH:MM'"
+      },
+      "WorkHoursInput": {
+        "type": "object",
+        "required": [
+          "owner",
+          "date",
+          "workStart",
+          "workEnd"
+        ],
+        "properties": {
+          "owner": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "workStart": {
+            "type": "string",
+            "format": "time"
+          },
+          "workEnd": {
+            "type": "string",
+            "format": "time"
+          }
+        },
+        "description": "Тело PUT /workhours: границы сохраняются только для пары (owner, date); зона — ответная, её просить не нужно"
+      },
+      "WorkHoursView": {
+        "type": "object",
+        "required": [
+          "owner",
+          "date",
+          "timezone"
+        ],
+        "properties": {
+          "owner": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA-зона Организатора из профиля; без профиля — UTC. В этих часах понимаются workStart/workEnd на дату"
+          }
+        },
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/WorkHours"
+          }
+        ],
+        "description": "Границы рабочего дня, сопоставленные с парой (email организатора, дата)"
+      }
+    }
+  }
+}

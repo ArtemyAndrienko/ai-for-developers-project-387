@@ -1,0 +1,23 @@
+# Go
+backend/bin/
+backend/backend
+
+# Node
+node_modules/
+frontend/dist/
+
+# ENV & local
+.env
+.env.*
+!.env.example
+
+# SQLite (ADR-0001)
+data/
+
+# OS/editor
+.DS_Store
+*.swp
+
+# собранный фронтенд внутри embed-директории (в git — только placeholder)
+backend/web/dist/*
+!backend/web/dist/index.html

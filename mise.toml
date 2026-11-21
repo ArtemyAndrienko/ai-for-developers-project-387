@@ -1,0 +1,78 @@
+[tools]
+# Закреплённые версии инструментов ( mise install )
+go = "1.27.4"
+node = "24.22.2"
+
+[tasks.setup]
+description = "Установить зависимости (frontend + typespec)"
+run = """
+(cd typespec && npm install) && \
+(cd frontend && npm install)
+"""
+
+[tasks.codegen]
+description = "TypeSpec -> OpenAPI -> типы/SDK фронтенда"
+run = """
+(cd typespec && npx tsp compile .) && \
+(cd frontend && npx openapi-typescript ../typespec/tsp-output/@typespec/openapi3/openapi.json -o src/api/schema.d.ts)
+"""
+
+[tasks.check-contract]
+description = "Проверить совпадение маршрутов Go и OpenAPI-спецификации"
+run = "bash scripts/check-contract.sh"
+
+[tasks.fmt-spec]
+description = "TypeSpec: отформатировать main.tsp"
+run = "bash -c 'cd typespec && npx tsp format main.tsp'"
+
+[tasks.dev-backend]
+description = "Запустить API на http://localhost:8080"
+dir = "backend"
+run = "go run ."
+
+[tasks.dev-frontend]
+description = "Запустить UI на http://localhost:5173 (proxy /api -> :8080)"
+dir = "frontend"
+run = "npm run dev"
+
+[tasks.test-backend]
+description = "Go-тесты"
+dir = "backend"
+run = "go test ./..."
+
+[tasks.test-frontend]
+description = "Vitest юнит-тесты"
+dir = "frontend"
+run = "npm test"
+
+[tasks.test]
+description = "Все тесты + сверка контракта"
+run = "mise run check-contract && mise run test-backend && mise run test-frontend"
+
+[tasks.lint-backend]
+description = "Go: gofmt + go vet"
+run = "bash scripts/lint-go.sh"
+
+[tasks.lint-frontend]
+description = "ESLint (flat config)"
+dir = "frontend"
+run = "npm run lint"
+
+[tasks.lint-spec]
+description = "TypeSpec: проверка, что main.tsp отформатирован (файл не меняется)"
+run = "bash scripts/lint-spec.sh"
+
+[tasks.lint]
+description = "Линтеры всех слоёв"
+run = "mise run lint-backend && mise run lint-frontend && mise run lint-spec"
+
+[tasks.check]
+description = "Полный прогон: линтеры + тесты + контракт + сборка (используется и в CI)"
+run = "mise run lint && mise run test && mise run build"
+
+[tasks.build]
+description = "Сборка бэкенда и фронтенда"
+run = """
+(cd backend && go build -o bin/calendar-api .) && \
+(cd frontend && npm run build)
+"""

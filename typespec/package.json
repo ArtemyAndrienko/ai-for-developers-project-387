@@ -1,0 +1,14 @@
+{
+  "name": "calendar-typespec",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "compile": "tsp compile ."
+  },
+  "devDependencies": {
+    "@typespec/compiler": "^1.18.0",
+    "@typespec/openapi3": "^1.18.0",
+    "@typespec/rest": "^0.88.0"
+  }
+}

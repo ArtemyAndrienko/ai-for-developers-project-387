@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Инструменты берутся из mise.toml (go 1.27.4, node 24.22.2)
+      - uses: jdx/mise-action@v5
+
+      - name: Доверить конфигурацию проекта
+        run: mise trust .
+
+      - name: Установка зависимостей (npm)
+        run: mise run setup
+
+      - name: Полная проверка (lint + contract + tests + build)
+        run: mise run check
