@@ -300,6 +300,36 @@ docker run -e PORT=8123 -p 8123:8123 calendar-app   # http://127.0.0.1:8123
 обнуляют данные (free-план). Персистентность — отдельная задача (Render disk
 или внешняя БД), как и авторизация.
 
+## Воркфлоу ИИ-агентов
+
+Репозиторий настроен под инженерные скиллы (настройки — в `docs/agents/`, правила —
+в `AGENTS.md`):
+
+- **Трекер задач — GitHub Issues** этого репозитория, все операции через `gh` CLI
+  (`docs/agents/issue-tracker.md`): спецификации и билеты публикуются как issues
+  (`/to-spec`, `/to-tickets`), блокировки — нативные зависимости и суб-исью GitHub,
+  карта крупных работ — issue с меткой `wayfinder:map` (`/wayfinder`).
+- **Triage-метки** (`docs/agents/triage-labels.md`): `needs-triage`, `needs-info`,
+  `ready-for-agent`, `ready-for-human`, `wontfix` — их обрабатывает `/triage`.
+- **Доменные документы** (`docs/agents/domain.md`): single-context — `GLOSSARY.md`
+  и `docs/adr/` (ADR-0001…0005); читаются перед разведкой кода, термины из глоссария
+  не переименовывать, конфликты с ADR подсвечивать явно; ведёт их `/domain-modeling`.
+
+Доступные скиллы: `ask-matt`, `code-review`, `codebase-design`, `diagnosing-bugs`,
+`domain-modeling`, `grill-me`, `grill-with-docs`, `grilling`,
+`handoff`, `implement`, `implement-spec`, `improve-codebase-architecture`, `pr`,
+`prototype`, `research`, `retro`, `setup-matt-pocock-skills`, `tdd`, `teach`,
+`to-questionnaire`, `to-spec`, `to-tickets`, `triage`, `wait-what`, `wayfinder`,
+`wizard`, `writing-for-agents`.
+
+Типовой поток: `/grill-with-docs` → `/to-spec` → `/to-tickets` →
+`/implement-spec` (или `/wayfinder` для больших работ) → `/code-review` → `pr`.
+
+Команда всех проверок: **`mise run check`** — линтеры + тесты + сверка контракта +
+сборка разом; тот же набор CI гоняет на каждый push. В UI GitHub-агента (`/oc`
+в комментариях к issues и PR, `.github/workflows/opencode.yml`) те же команды
+выполняются по запросу.
+
 ## Что дальше
 После успешной проверки проект можно развивать как продукт и добавлять новые возможности.
 
