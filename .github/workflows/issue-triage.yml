@@ -25,6 +25,9 @@ jobs:
     # фильтр 1: не триажим обращения от ботов
     if: github.event.issue.user.type == 'User'
     runs-on: ubuntu-latest
+    # ограничение: триаж не должен занимать часы — зависший агент
+    # убиваем по таймауту, лейбл при этом просто не проставится
+    timeout-minutes: 15
     steps:
       - name: Filters (triage-лейблы, маркер, возраст аккаунта)
         id: filter
