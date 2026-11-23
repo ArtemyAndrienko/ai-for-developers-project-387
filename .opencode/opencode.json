@@ -10,5 +10,31 @@
         "Authorization": "Bearer {env:RENDER_API_KEY}"
       }
     }
+  },
+  "permission": {
+    "edit": "allow",
+    "bash": "allow",
+    "task": "deny",
+    "question": "deny",
+    "webfetch": "allow",
+    "websearch": "allow",
+    "doom_loop": "deny",
+    "external_directory": "allow",
+    "read": {
+      "*.env": "deny",
+      "*.env.*": "deny",
+      "*.env.example": "allow"
+    }
+  },
+  "agent": {
+    "triage": {
+      "description": "Автотриаж обращений: вердикт-лейбл без доступа к коду",
+      "mode": "primary",
+      "permission": {
+        "edit": "deny",
+        "task": "deny",
+        "external_directory": "deny"
+      }
+    }
   }
 }

@@ -73,6 +73,7 @@ jobs:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
         with:
           model: opencode/qwen3.8-flash
+          agent: triage
           prompt: |
             Автоматический триаж issue #${{ github.event.issue.number }} этого репозитория.
             Оценивай ТОЛЬКО текст issue из текущего события (заголовок и тело).
