@@ -358,6 +358,65 @@ docker run -e PORT=8123 -p 8123:8123 calendar-app   # http://127.0.0.1:8123
 репортёру), `ready-for-human` (нужны действия человека), `needs-triage`
 (безопасный дефолт, в том числе когда агент не ответил по форме).
 
+### Lighthouse-аудит по расписанию (`.github/workflows/lighthouse-audit.yml`)
+
+Ежедневная проверка скорости и качества боевого развёртывания. В одном файле
+два триггера: `schedule` с пятиполевым cron `0 6 * * *` и
+явным `timezone: Europe/Moscow` (без него Actions считают cron в UTC) — и
+`workflow_dispatch` с выбором режима: `real` (аудит публичного URL) или
+`training` (синтетический фикстур `scripts/lighthouse-training-report.mjs`
+для демонстрации без реальных находок). Не чаще одного запуска в сутки,
+`timeout-minutes: 20`, параллельные прогоны ограничены `concurrency`
+(группа `lighthouse-audit`).
+
+**Конвейер**: прогрев приложения (`/api/health`, иначе холодный старт Render
+давал бы вечную находку по TTFB) → Lighthouse → `scripts/lighthouse-extract.mjs`
+сжимает отчёт до `metrics.json` и пороговых `candidates.json` (единственный
+источник порогов) → агент `audit` (определение в `.opencode/opencode.json`:
+`bash: deny`, писать разрешено только вердикт) сверяет кандидатов и пишет
+`.audit/verdict.json` → `actions/upload-artifact` сохраняет исходный отчёт →
+post-шаг `actions/github-script` публикует находки и дедуплицирует их.
+`report.json` и `.audit/` в `.gitignore` — отчёты не попадают в коммиты.
+
+**Права и авторизация**: агент работает через OIDC (`id-token: write`) —
+тот же способ, что в `opencode.yml`; ключ модели — секрет `OPENCODE_API_KEY`.
+`contents: read` (checkout без сохранённых кредов), `issues: write` — только
+post-шагу, не агенту: публикация и дедупликация детерминированы скриптом
+(конвенция автотриажа из 4ae7cf7).
+
+**Дедупликация**: ключ — строка `` - fingerprint: `lh:<audit-id>` `` в теле
+открытого issue с лейблом `lighthouse-finding` (в training-режиме префикс
+`train:` и лейбл `lighthouse-training`). Повторная находка — комментарий
+«🔁 Повторная находка» в существующий issue, не дубль. Каждый прогон пишет
+итоговый комментарий в статус-тред «Lighthouse-аудит: статус прогонов»
+(#14) с находками, ссылкой на ран и именем артефакта — одной ссылки на
+артефакт недостаточно, они живут 14 дней.
+
+**Результаты прогонов** (все из `main`):
+- `real` [run 45175808238](https://github.com/ArtemyAndrienko/ai-for-developers-project-387/actions/runs/45175808238):
+  вердикт агента — 1 находка, создана [#15] «accessibility: 89 из 100»
+  (major); артефакт `lighthouse-real-2`; performance 100, best-practices 96,
+  seo 90 — в норме, серверный отклик после прогрева 60 ms.
+- `training` [run 45176404638](https://github.com/ArtemyAndrienko/ai-for-developers-project-387/actions/runs/45176404638):
+  из заведомо провального фикстура агент создал 9 учебных issues (#16–#24).
+- `training` повторно [run 45176766373](https://github.com/ArtemyAndrienko/ai-for-developers-project-387/actions/runs/45176766373):
+  0 новых issues, 8 дубль-комментариев в существующие — дедупликация работает.
+
+**Личные выводы.** Первая же проверка живым прогоном вскрыла две ошибки,
+невидимые статически: у `anomalyco/opencode/github` обязательное `id-token:
+write` (без него шаг падал на OIDC ещё до запуска агента) и несуществующий
+`issues.addComment` вместо `createComment` — спас `continue-on-error` плюс
+fallback на `candidates.json`, который не уронил воркфлоу, а честно отметил
+в issue источник вердикта (`src=agent|candidates`). Второе наблюдение: агент
+полезен именно судьёй кандидатов — на боевом отчёте он подтвердил единственную
+кандидат-находку, а на учебном отсеял пограничный шум (10 кандидатов → 9
+находок). Третье: порог — это продукт-решение, а не число из Lighthouse:
+без прогрева Render cold-start превращал бы TTFB 1500+ ms в ежедневный
+ложный issue. Вывод для будущих автоматизаций: детерминированный код собирает
+и публикует факт, модель только квалифицирует его.
+
+[#15]: https://github.com/ArtemyAndrienko/ai-for-developers-project-387/issues/15
+
 ## Что дальше
 После успешной проверки проект можно развивать как продукт и добавлять новые возможности.
 
