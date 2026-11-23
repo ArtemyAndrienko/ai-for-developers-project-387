@@ -2,10 +2,12 @@
 // в «Прошедшие», которые можно скрыть кнопкой «Скрыть неактуальное».
 // Предстоящую Запись посетитель может отменить (подтверждение вторым кликом).
 // Источник отмены («организатор» / «посетитель») выводится из state/meetingState.
+// Вторые время предстоящих Записей конвертируются в Пояс просмотра (билет #7) —
+// общий localStorage-ключ с экраном записи, вердикты/даты по-прежнему в поясе
+// Организатора (ADR-0004).
 
 import { api } from "../api";
 import {
-  browserZone,
   cancelSourceLabel,
   formatVisitorTime,
   groupBookings,
@@ -14,11 +16,13 @@ import {
   LAST_EMAIL_KEY,
   ruLongDate,
 } from "../utils";
+import { loadViewerZone, viewerZoneControlHtml, wireViewerZone } from "../viewerZone";
 import type { BookingView } from "../types";
 
 export async function renderMine(app: HTMLElement): Promise<void> {
   let hidePast = localStorage.getItem(HIDE_PAST_KEY) === "1";
   let email = localStorage.getItem(LAST_EMAIL_KEY) ?? "";
+  let viewerZone = loadViewerZone();
   let bookings: BookingView[] | null = email ? await fetchBookings(email) : null;
   let error: string | null = null;
 
@@ -33,7 +37,15 @@ export async function renderMine(app: HTMLElement): Promise<void> {
         </div>
       </div>
       ${error ? `<div class="error">${error}</div>` : ""}
-      ${bookings === null ? `<div class="hint">Введите email, чтобы увидеть свои записи.</div>` : listHtml(bookings, hidePast)}`;
+      ${bookings === null ? `<div class="hint">Введите email, чтобы увидеть свои записи.</div>` : listHtml(bookings, hidePast, viewerZone)}
+      ${viewerZoneControlHtml(viewerZone)}`;
+
+    // Пояс просмотра внизу экрана (билет #7): тот же ключ calendar.viewerZone,
+    // что на «Запись на звонок» — выбор синхронен между экранами и сессиями.
+    wireViewerZone(app, (zone) => {
+      viewerZone = zone;
+      ui();
+    });
 
     app.querySelector("#find")!.addEventListener("click", async () => {
       email = (app.querySelector("#email") as HTMLInputElement).value.trim();
@@ -82,7 +94,7 @@ async function fetchBookings(email: string): Promise<BookingView[]> {
   return api.bookings(email);
 }
 
-function listHtml(bookings: BookingView[], hidePast: boolean): string {
+function listHtml(bookings: BookingView[], hidePast: boolean, viewerZone: string): string {
   // Отменённые Записи — не предстоящие: попадают в «Прошедшие» с бейджем.
   const grouped = bookings.map((b) => ({ ...b, past: isCancelledOrPast(b) }));
   const { upcoming, past } = groupBookings(grouped);
@@ -90,13 +102,14 @@ function listHtml(bookings: BookingView[], hidePast: boolean): string {
     [b.meetingOwnerName, b.meetingOwnerEmail].filter(Boolean).join(" · ");
   const card = (b: BookingView) => {
     const source = cancelSourceLabel(b);
-    // Билет #13: то же правило отображения, что на экране записи, — часы
+    // Билет #13 + #7: то же правило отображения, что на экране записи, — часы
     // Организатора встречи (без профиля по контракту — UTC) с подписью пояса.
-    // Решение #13 Q3=a: локальное время в скобках — только у предстоящих;
-    // прошедшим и отменённым хватает часов Организатора с подписью.
+    // Решение #13 Q3=a: «второе» время в скобках — только у предстоящих, и оно
+    // идёт в Поясе просмотра; прошедшим и отменённым хватает часов
+    // Организатора с подписью.
     const isUpcoming = !isCancelledOrPast(b);
     const zone = b.timezone || "UTC";
-    const t = formatVisitorTime(b.start, b.end, zone, browserZone(), b.date);
+    const t = formatVisitorTime(b.start, b.end, zone, viewerZone, b.date);
     return `
     <li class="card booking${b.past ? " off" : ""}">
       <div class="booking-head">
