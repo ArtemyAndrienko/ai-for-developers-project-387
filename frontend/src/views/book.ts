@@ -3,7 +3,6 @@
 
 import { api, ApiError } from "../api";
 import {
-  browserZone,
   emailLike,
   formatVisitorTime,
   LAST_EMAIL_KEY,
@@ -12,6 +11,7 @@ import {
   slotLabel,
   visitorClashes,
 } from "../utils";
+import { loadViewerZone, viewerZoneControlHtml, wireViewerZone } from "../viewerZone";
 import type { Meeting, Slot } from "../types";
 
 type Step = "select" | "confirm" | "done";
@@ -27,6 +27,9 @@ interface BookState {
   error: string | null;
   // Жёсткий конфликт (409): интервал, который пытались забронировать.
   conflict: Slot | null;
+  // Пояс просмотра (билет #6): display-only зона «второго» времени,
+  // разрешённая из общего localStorage-ключа / браузера.
+  viewerZone: string;
 }
 
 export async function renderBook(app: HTMLElement): Promise<void> {
@@ -40,13 +43,25 @@ export async function renderBook(app: HTMLElement): Promise<void> {
     email: localStorage.getItem(LAST_EMAIL_KEY) ?? "",
     error: null,
     conflict: null,
+    viewerZone: loadViewerZone(),
   };
 
   const meeting = () => state.meetings.find((m) => m.id === state.meetingId) ?? null;
 
+  // Пояс просмотра внизу экрана (билет #6): перерисовка сетки и карточки
+  // «Выбранное время» в выбранной зоне без смены шага.
+  const mountZoneControl = () => {
+    app.insertAdjacentHTML("beforeend", viewerZoneControlHtml(state.viewerZone));
+    wireViewerZone(app, (zone) => {
+      state.viewerZone = zone;
+      ui();
+    });
+  };
+
   const ui = () => {
     if (state.meetings.length === 0) {
       app.innerHTML = `<div class="empty-state">Активных встреч пока нет — вернитесь позже.</div>`;
+      mountZoneControl();
       return;
     }
 
@@ -67,6 +82,7 @@ export async function renderBook(app: HTMLElement): Promise<void> {
         if (state.meetingId) state.slots = await api.slots(state.meetingId);
         ui();
       });
+      mountZoneControl();
       return;
     }
 
@@ -149,6 +165,7 @@ export async function renderBook(app: HTMLElement): Promise<void> {
         }
         ui();
       });
+      mountZoneControl();
       return;
     }
 
@@ -220,6 +237,8 @@ export async function renderBook(app: HTMLElement): Promise<void> {
         }
       }),
     );
+
+    mountZoneControl();
   };
 
   ui();
@@ -234,7 +253,7 @@ function infoCard(state: BookState, m: Meeting | null): string {
       <div class="kv"><span>Встреча</span><strong>${m ? m.name : "—"}</strong></div>
       <div class="kv"><span>Дата</span><strong>${m ? ruLongDate(m.date) : "Дата не выбрана"}</strong></div>
       <div class="kv"><span>Выбранное время</span><strong>${
-        slot ? visitorTime(m, slot.start, slot.end) : "Время не выбрано"
+        slot ? visitorTime(state, m, slot.start, slot.end) : "Время не выбрано"
       }</strong></div>
       <div class="kv"><span>Свободно</span><strong>${state.meetingId ? free : 0}</strong></div>
       <div class="kv"><span>Длительность интервала</span><strong>${
@@ -243,11 +262,12 @@ function infoCard(state: BookState, m: Meeting | null): string {
     </div>`;
 }
 
-// Билет #13: HH:MM из сетки — это часы Организатора; показываем их с подписью
-// пояса и локальное время Посетителя в скобках (чисто, если зоны совпали).
-function visitorTime(m: Meeting | null, start: string, end: string): string {
+// Билет #13 + #6: HH:MM из сетки — это часы Организатора; показываем их с
+// подписью пояса, а «второе» время — в Поясе просмотра (браузер по умолчанию,
+// селектор внизу экрана) — чисто, если зоны совпали.
+function visitorTime(state: BookState, m: Meeting | null, start: string, end: string): string {
   if (!m) return `${start}–${end}`;
-  const t = formatVisitorTime(start, end, m.timezone, browserZone(), m.date);
+  const t = formatVisitorTime(start, end, m.timezone, state.viewerZone, m.date);
   return `${t.primary}${t.secondary}`;
 }
 
@@ -284,7 +304,7 @@ function slotsList(state: BookState, m: Meeting | null): string {
         // IANA-зона организатора — в подсказке строки (билет #13, US-9).
         const hint = m?.timezone ? ` title="${m.timezone}"` : "";
         return `<li class="${cls}" data-slot="${s.start}" data-selectable="${selectable ? "1" : "0"}"${hint}>
-          <span>${visitorTime(m, s.start, s.end)}</span><b>${slotLabel(s.status)}</b></li>`;
+          <span>${visitorTime(state, m, s.start, s.end)}</span><b>${slotLabel(s.status)}</b></li>`;
       })
       .join("")}
   </ul>`);
