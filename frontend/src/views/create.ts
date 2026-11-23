@@ -15,9 +15,14 @@ import {
   OWNER_NAME_KEY,
   ruLongDate,
   slotLabel,
-  todayIso,
 } from "../utils";
-import { DEFAULT_ORGANIZER_ZONE, zoneCatalog, zoneOffsetMinutes, zoneOptionLabel } from "../zones";
+import {
+  DEFAULT_ORGANIZER_ZONE,
+  todayInZone,
+  zoneCatalog,
+  zoneOffsetMinutes,
+  zoneOptionLabel,
+} from "../zones";
 import type { DayAvailability, Meeting, Slot } from "../types";
 
 interface CreateState {
@@ -176,7 +181,9 @@ export async function renderCreate(app: HTMLElement): Promise<void> {
     const freeByDate = new Map(state.availability.map((d) => [d.date, d.free]));
     renderCalendar(
       calEl,
-      buildCalendar(todayIso(), freeByDate, state.weekOffset),
+      // Якорь окна — «сегодня» в поясе формы (билет #9): бэкенд считает окно
+      // по тому же поясу, якорь браузера разъезжался с сеткой на сутки.
+      buildCalendar(todayInZone(state.timezone), freeByDate, state.weekOffset),
       state.date,
       async (date) => {
         state.date = date;

@@ -76,6 +76,30 @@ export function sortZonesByOffset(zones: string[], nowMs: number): string[] {
   });
 }
 
+// «Сегодня» в поясе организатора (билет #9): якорь Окна доступности на
+// создании. Backend считает окно по тому же поясу (store.previewZone:
+// переданная > профиль > UTC) — якорь браузера разъезжался с сеткой на сутки
+// у краёв календарного дня зоны. Битая/пустая зона — фолбэк на UTC, как
+// defaultZone бэкенда без профиля.
+export function todayInZone(zone: string, now: Date = new Date()): string {
+  const ymd = (z: string) => {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: z,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(now);
+    const value = (type: string) => parts.find((p) => p.type === type)!.value;
+    return `${value("year")}-${value("month")}-${value("day")}`;
+  };
+  try {
+    if (zone) return ymd(zone);
+  } catch {
+    // неIANA-имя — ниже общий фолбэк
+  }
+  return ymd("UTC");
+}
+
 // Полный IANA-справочник среды, отсортированный для селектора. Если среда не
 // отдаёт supportedValuesOf или список пуст — только DEFAULT_ORGANIZER_ZONE,
 // чтобы сабмит создания не ломался (билет #4).
