@@ -277,7 +277,7 @@ mise run codegen        # TypeSpec -> OpenAPI -> типы SDK после пра�
 
 ## Деплой (Render, Docker)
 
-Публичный адрес: **https://ai-for-developers-project-386-app.onrender.com**
+Публичный адрес: **https://ai-for-developers-project-387-app.onrender.com**
 (UI и `/api/*` из одного контейнера; free-план «засыпает» без трафика —
 первый запрос может идти ~минуту).
 
