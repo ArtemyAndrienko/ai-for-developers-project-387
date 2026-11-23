@@ -24,4 +24,4 @@ backend/web/dist/*
 
 # локальные артефакты Lighthouse-аудита (в CI живут только в artifact)
 report.json
-.audit/
+audit/

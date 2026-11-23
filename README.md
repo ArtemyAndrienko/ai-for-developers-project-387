@@ -374,9 +374,9 @@ docker run -e PORT=8123 -p 8123:8123 calendar-app   # http://127.0.0.1:8123
 сжимает отчёт до `metrics.json` и пороговых `candidates.json` (единственный
 источник порогов) → агент `audit` (определение в `.opencode/opencode.json`:
 `bash: deny`, писать разрешено только вердикт) сверяет кандидатов и пишет
-`.audit/verdict.json` → `actions/upload-artifact` сохраняет исходный отчёт →
+`audit/verdict.json` → `actions/upload-artifact` сохраняет исходный отчёт →
 post-шаг `actions/github-script` публикует находки и дедуплицирует их.
-`report.json` и `.audit/` в `.gitignore` — отчёты не попадают в коммиты.
+`report.json` и `audit/` в `.gitignore` — отчёты не попадают в коммиты.
 
 **Права и авторизация**: агент работает через OIDC (`id-token: write`) —
 тот же способ, что в `opencode.yml`; ключ модели — секрет `OPENCODE_API_KEY`.

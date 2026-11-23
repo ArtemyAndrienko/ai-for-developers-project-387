@@ -80,7 +80,7 @@ jobs:
             --max-wait-for-load=45000 --quiet
 
       - name: Extract compact metrics and candidate findings
-        run: node scripts/lighthouse-extract.mjs report.json .audit
+        run: node scripts/lighthouse-extract.mjs report.json audit
 
       - name: Analyze report with OpenCode agent
         continue-on-error: true
@@ -94,8 +94,8 @@ jobs:
             Ты — аналитик отчёта Lighthouse этого проекта. Режим прогона: ${{ env.MODE }}.
 
             Прочитай ровно два файла (report.json НЕ читай — он огромный):
-            - .audit/metrics.json — сжатые метрики категорий и ключевых аудитов;
-            - .audit/candidates.json — предварительные находки по порогам.
+            - audit/metrics.json — сжатые метрики категорий и ключевых аудитов;
+            - audit/candidates.json — предварительные находки по порогам.
 
             Финализируй список РЕАЛЬНЫХ находок, ухудшающих пользовательский опыт:
             1. Подтверди или отклони каждого кандидата (шум и пограничные значения —
@@ -105,12 +105,12 @@ jobs:
                "lh:category:<key>"), auditId, title, severity (critical|major|minor),
                value, threshold, explanation (1–3 предложения: что, почему мешает, как чинить).
 
-            Результат запиши в файл .audit/verdict.json строго вида:
+            Результат запиши в файл audit/verdict.json строго вида:
             {"findings": [{"fingerprint","auditId","title","severity","value","threshold","explanation"}]}
             Без находок — {"findings": []}.
 
             Запрещено: любые команды, gh/git, GitHub API, правка файлов кроме
-            .audit/verdict.json. В текстовом ответе верни ровно тот же JSON, что в файле.
+            audit/verdict.json. В текстовом ответе верни ровно тот же JSON, что в файле.
 
       - name: Upload report artifact
         uses: actions/upload-artifact@v4
@@ -118,18 +118,18 @@ jobs:
           name: lighthouse-${{ env.MODE }}-${{ github.run_number }}
           path: |
             report.json
-            .audit/**
+            audit/**
           retention-days: 14
 
       - name: Read verdict (fallback to candidate rules)
         id: verdict
         run: |
-          if [ -f .audit/verdict.json ]; then
+          if [ -f audit/verdict.json ]; then
             echo "src=agent" >> "$GITHUB_OUTPUT"
-            f=.audit/verdict.json
+            f=audit/verdict.json
           else
             echo "src=candidates" >> "$GITHUB_OUTPUT"
-            f=.audit/candidates.json
+            f=audit/candidates.json
           fi
           echo "data=$(base64 -w0 "$f")" >> "$GITHUB_OUTPUT"
 
