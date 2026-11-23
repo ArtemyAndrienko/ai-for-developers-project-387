@@ -1,0 +1,216 @@
+name: lighthouse-audit
+
+# Ежедневный аудит скорости и качества боевого развёртывания + ручной запуск.
+# Агент (OpenCode) разбирает Lighthouse-отчёт и выносит вердикт-JSON; публикацию
+# находок в issues, дедупликацию и статус-комментарий делает детерминированный
+# post-шаг от GITHUB_TOKEN — по конвенции репозитория агент не трогает GitHub API
+# (см. 4ae7cf7 в issue-triage).
+
+on:
+  schedule:
+    # не чаще одного запуска в сутки; явный часовой пояс (Actions считают cron в UTC)
+    - cron: "0 6 * * *"
+      timezone: Europe/Moscow
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "real — аудит боевого URL; training — синтетический учебный отчёт"
+        type: choice
+        options:
+          - real
+          - training
+        default: real
+      url:
+        description: "URL для аудита (real-режим)"
+        type: string
+        default: https://ai-for-developers-project-387-app.onrender.com
+
+# Агент работает только с локальными файлами; mutation прав нет (contents —
+# read-only checkout без сохранённых кредов), issues нужны post-шагу.
+permissions:
+  contents: read
+  issues: write
+
+# Один аудит за раз: параллельные прогоны перерисовывают артефакты и гоном
+# дубли находок.
+concurrency:
+  group: lighthouse-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      MODE: ${{ github.event.inputs.mode || 'real' }}
+      AUDIT_URL: ${{ github.event.inputs.url || 'https://ai-for-developers-project-387-app.onrender.com' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Training report (synthetic fixture)
+        if: env.MODE == 'training'
+        run: node scripts/lighthouse-training-report.mjs report.json
+
+      - name: Wake the deployed app
+        if: env.MODE == 'real'
+        run: |
+          curl -fsS -m 90 "$AUDIT_URL/api/health" || true
+          sleep 10
+
+      - name: Run Lighthouse
+        if: env.MODE == 'real'
+        run: |
+          npx -y lighthouse@12 "$AUDIT_URL" \
+            --output=json --output-path=report.json \
+            --only-categories=performance,accessibility,best-practices,seo \
+            --chrome-flags="--headless=new --no-sandbox --disable-dev-shm-usage" \
+            --max-wait-for-load=45000 --quiet
+
+      - name: Extract compact metrics and candidate findings
+        run: node scripts/lighthouse-extract.mjs report.json .audit
+
+      - name: Analyze report with OpenCode agent
+        continue-on-error: true
+        uses: anomalyco/opencode/github@latest
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+        with:
+          model: opencode/qwen3.8-flash
+          agent: audit
+          prompt: |
+            Ты — аналитик отчёта Lighthouse этого проекта. Режим прогона: ${{ env.MODE }}.
+
+            Прочитай ровно два файла (report.json НЕ читай — он огромный):
+            - .audit/metrics.json — сжатые метрики категорий и ключевых аудитов;
+            - .audit/candidates.json — предварительные находки по порогам.
+
+            Финализируй список РЕАЛЬНЫХ находок, ухудшающих пользовательский опыт:
+            1. Подтверди или отклони каждого кандидата (шум и пограничные значения —
+               отклоняй с пометкой, кандидатам без изменений верни как есть).
+            2. Добавь находки, явно видимые в metrics, но отсутствующие среди кандидатов.
+            3. Поля каждой находки: fingerprint "lh:<audit-id>" (категории —
+               "lh:category:<key>"), auditId, title, severity (critical|major|minor),
+               value, threshold, explanation (1–3 предложения: что, почему мешает, как чинить).
+
+            Результат запиши в файл .audit/verdict.json строго вида:
+            {"findings": [{"fingerprint","auditId","title","severity","value","threshold","explanation"}]}
+            Без находок — {"findings": []}.
+
+            Запрещено: любые команды, gh/git, GitHub API, правка файлов кроме
+            .audit/verdict.json. В текстовом ответе верни ровно тот же JSON, что в файле.
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-${{ env.MODE }}-${{ github.run_number }}
+          path: |
+            report.json
+            .audit/
+          retention-days: 14
+
+      - name: Read verdict (fallback to candidate rules)
+        id: verdict
+        run: |
+          if [ -f .audit/verdict.json ]; then
+            echo "src=agent" >> "$GITHUB_OUTPUT"
+            f=.audit/verdict.json
+          else
+            echo "src=candidates" >> "$GITHUB_OUTPUT"
+            f=.audit/candidates.json
+          fi
+          echo "data=$(base64 -w0 "$f")" >> "$GITHUB_OUTPUT"
+
+      - name: Publish findings and status comment (dedup)
+        uses: actions/github-script@v7
+        env:
+          VERDICT_B64: ${{ steps.verdict.outputs.data }}
+          VERDICT_SRC: ${{ steps.verdict.outputs.src }}
+          MODE: ${{ env.MODE }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const mode = process.env.MODE;
+            const src = process.env.VERDICT_SRC;
+            const training = mode === "training";
+            const verdict = JSON.parse(Buffer.from(process.env.VERDICT_B64, "base64").toString("utf8"));
+            const findings = Array.isArray(verdict.findings) ? verdict.findings : [];
+            const artifact = `lighthouse-${mode}-${context.runNumber}`;
+
+            for (const [name, description, color] of [
+              ["lighthouse-finding", "Находка Lighthouse-аудита", "d4c5f9"],
+              ["lighthouse-audit-status", "Статус-тред Lighthouse-аудитов", "ededed"],
+              ["lighthouse-training", "Учебный сценарий аудита (синтетический отчёт)", "fbc4c4"],
+            ]) {
+              try {
+                await github.rest.issues.createLabel({ owner, repo, name, description, color });
+              } catch (e) { /* уже существует — ок */ }
+            }
+
+            const opens = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: "open", per_page: 100, labels: "lighthouse-finding",
+            });
+
+            const results = [];
+            for (const f of findings) {
+              const fp = training ? `train:${f.fingerprint}` : f.fingerprint;
+              const dup = opens.find((i) => (i.body || "").includes(`fingerprint: \`${fp}\``));
+              const marker = training ? "[учебный аудит] " : "";
+              if (dup) {
+                await github.rest.issues.addComment({
+                  owner, repo, issue_number: dup.number,
+                  body: `${marker}🔁 Повторная находка \`${fp}\` (значение: ${f.value}, порог: ${f.threshold}). Прогон: ${runUrl}`,
+                });
+                results.push({ fp, issue: dup.number, action: "dup" });
+                continue;
+              }
+              const created = await github.rest.issues.create({
+                owner, repo,
+                title: `${marker}[Lighthouse] ${f.title}`,
+                labels: training ? ["lighthouse-finding", "lighthouse-training"] : ["lighthouse-finding"],
+                body: [
+                  `- fingerprint: \`${fp}\``,
+                  "",
+                  `**Что:** ${f.explanation}`,
+                  `**Значение:** ${f.value} · **Порог:** ${f.threshold} · **Серьёзность:** ${f.severity}`,
+                  "",
+                  training
+                    ? "⚠️ Учебный сценарий: находка получена из синтетического отчёта (scripts/lighthouse-training-report.mjs), не из боевого замера."
+                    : "",
+                  `Прогон: ${runUrl} · артефакт: \`${artifact}\` · вердикт: ${src}`,
+                ].filter(Boolean).join("\n"),
+              });
+              results.push({ fp, issue: created.data.number, action: "new" });
+            }
+
+            const summary = findings.length
+              ? `Находок: ${findings.length}. ${results.map((r) => `#${r.issue}${r.action === "dup" ? " (дубль-комментарий)" : " (новая)"}`).join(", ")}`
+              : "Находок нет — все пороги в норме.";
+
+            const STATUS_TITLE = "Lighthouse-аудит: статус прогонов";
+            let status = opens.concat(await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: "open", per_page: 100, labels: "lighthouse-audit-status",
+            })).find((i) => i.title === STATUS_TITLE);
+            if (!status) {
+              const c = await github.rest.issues.create({
+                owner, repo, title: STATUS_TITLE,
+                labels: ["lighthouse-audit-status"],
+                body: "Авто-тред результатов Lighthouse-аудита. Каждый прогон добавляет комментарий: вердикт, находки, ссылка на артефакт и ран.",
+              });
+              status = c.data;
+            }
+            await github.rest.issues.addComment({
+              owner, repo, issue_number: status.number,
+              body: `### ${new Date().toISOString()} · режим \`${mode}\` · вердикт: \`${src}\`\n\n${summary}\n\nПрогон: ${runUrl} · артефакт: \`${artifact}\` (хранится 14 дней)`,
+            });
+            core.notice(`${summary} (mode=${mode}, src=${src})`);

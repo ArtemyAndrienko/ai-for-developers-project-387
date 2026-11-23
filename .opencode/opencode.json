@@ -35,6 +35,19 @@
         "task": "deny",
         "external_directory": "deny"
       }
+    },
+    "audit": {
+      "description": "Разбор Lighthouse-отчёта: читает компактные метрики, пишет verdict.json; GitHub-операции запрещены",
+      "mode": "primary",
+      "permission": {
+        "edit": "allow",
+        "bash": "deny",
+        "task": "deny",
+        "question": "deny",
+        "webfetch": "deny",
+        "websearch": "deny",
+        "external_directory": "deny"
+      }
     }
   }
 }

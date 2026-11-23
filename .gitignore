@@ -21,3 +21,7 @@ data/
 # собранный фронтенд внутри embed-директории (в git — только placeholder)
 backend/web/dist/*
 !backend/web/dist/index.html
+
+# локальные артефакты Lighthouse-аудита (в CI живут только в artifact)
+report.json
+.audit/
