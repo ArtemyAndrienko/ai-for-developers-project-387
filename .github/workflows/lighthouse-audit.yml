@@ -118,7 +118,7 @@ jobs:
           name: lighthouse-${{ env.MODE }}-${{ github.run_number }}
           path: |
             report.json
-            .audit/
+            .audit/**
           retention-days: 14
 
       - name: Read verdict (fallback to candidate rules)
