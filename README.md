@@ -2,6 +2,7 @@
 
 
 [![hexlet-check](https://github.com/ArtemyAndrienko/ai-for-developers-project-387/actions/workflows/hexlet-check.yml/badge.svg)](https://github.com/ArtemyAndrienko/ai-for-developers-project-387/actions)
+[![CI](https://github.com/ArtemyAndrienko/ai-for-developers-project-387/actions/workflows/ci.yml/badge.svg)](https://github.com/ArtemyAndrienko/ai-for-developers-project-387/actions/workflows/ci.yml)
 
 Интегрируйте работу агентов в GitHub проект
 
