@@ -165,8 +165,8 @@ function zoneShortLabel(zone: string, date: string): string {
 export interface VisitorTime {
   primary: string; // «10:00–10:30» + подпись пояса организатора (кроме sameZone)
   secondary: string; // « (08:00–10:00 у вас)» — локальные границы посетителя,
-  // если зоны различаются; при расхождении календарных дней добавляется
-  // маркер «, предыдущий день» / «, следующий день»
+  // если зоны различаются; при расхождении календарных дней перед временем
+  // появляется маркер сдвига «−1д » / «+1д » (билет #5, спека #3)
   sameZone: boolean;
 }
 
@@ -202,11 +202,13 @@ export function formatVisitorTime(
       };
       const from = toLocal(start);
       const to = toLocal(end);
-      // Маркер только при реальном расхождении календарных дней (по старту);
-      // сама подпись даты выше не меняется.
-      const shift =
-        from.day < organizerDay ? ", предыдущий день" : from.day > organizerDay ? ", следующий день" : "";
-      secondary = ` (${from.hm}–${to.hm} у вас${shift})`;
+      // Маркер сдвига только при реальном расхождении календарных дней
+      // (по старту): «−1д » / «+1д » перед временем (билет #5); сама подпись
+      // даты выше не меняется.
+      const dayShift = from.day - organizerDay;
+      const marker =
+        dayShift === 0 ? "" : `${dayShift > 0 ? "+" : "−"}${Math.abs(dayShift)}д `;
+      secondary = ` (${marker}${from.hm}–${to.hm} у вас)`;
     }
   } catch {
     secondary = ""; // неизвестная/битая зона посетителя — без локальной строки

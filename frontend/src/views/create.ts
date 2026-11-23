@@ -10,7 +10,6 @@
 import { api } from "../api";
 import { buildCalendar, renderCalendar } from "../calendar";
 import {
-  browserZone,
   emailLike,
   OWNER_EMAIL_KEY,
   OWNER_NAME_KEY,
@@ -18,6 +17,7 @@ import {
   slotLabel,
   todayIso,
 } from "../utils";
+import { DEFAULT_ORGANIZER_ZONE, zoneCatalog, zoneOffsetMinutes, zoneOptionLabel } from "../zones";
 import type { DayAvailability, Meeting, Slot } from "../types";
 
 interface CreateState {
@@ -47,15 +47,28 @@ const STEP_PRESETS = [15, 30, 45, 60, 90];
 // Доступные пресеты шага: не больше выбранной длительности.
 const stepPresetsFor = (duration: number) => STEP_PRESETS.filter((s) => s <= duration);
 
+// Опции селектора пояса: полный IANA-справочник, отсортированный по факту
+// на момент отрисовки (DST учтён), подписи с смещением UTC (билет #4).
+function tzOptionsHtml(selected: string): string {
+  const now = Date.now();
+  return zoneCatalog(now)
+    .map(
+      (z) =>
+        `<option value="${z}"${z === selected ? " selected" : ""}>${zoneOptionLabel(z, zoneOffsetMinutes(z, now))}</option>`,
+    )
+    .join("");
+}
+
 export async function renderCreate(app: HTMLElement): Promise<void> {
   const state: CreateState = {
     name: "",
     description: "",
     owner: localStorage.getItem(OWNER_EMAIL_KEY) ?? "",
     ownerName: localStorage.getItem(OWNER_NAME_KEY) ?? "",
-    // Предзаполнение поля «Часовой пояс» зоной браузера (user story 2);
-    // в нестандартных средах — пусто, сервер тогда не трогает профиль.
-    timezone: browserZone(),
+    // Дефолт поля «Часовой пояс» — Europe/Moscow (билет #4): не зона браузера,
+    // которая не обязана быть рабочей зоной организатора; опечатку ловит уже
+    // сам селектор, выбирающий из IANA-справочника.
+    timezone: DEFAULT_ORGANIZER_ZONE,
     duration: 30,
     step: null,
     date: null,
@@ -81,7 +94,8 @@ export async function renderCreate(app: HTMLElement): Promise<void> {
         <label>Email организатора <input id="owner" type="email" placeholder="boss@example.com" />
           <small class="muted">по нему учитывается занятость интервалов во всех ваших встречах</small></label>
         <label>Имя организатора <input id="owner-name" placeholder="Необязательно, видно посетителям" /></label>
-        <label>Часовой пояс <input id="tz" placeholder="Europe/Moscow" />
+        <label>Часовой пояс
+          <select id="tz">${tzOptionsHtml(state.timezone)}</select>
           <small class="muted">IANA-зона: рабочий день, даты и «уже прошло» считаются по вашим часам</small></label>
         <label>Продолжительность
           <select id="dur">
@@ -121,7 +135,7 @@ export async function renderCreate(app: HTMLElement): Promise<void> {
   const descInput = $<HTMLTextAreaElement>("#desc");
   const ownerInput = $<HTMLInputElement>("#owner");
   const ownerNameInput = $<HTMLInputElement>("#owner-name");
-  const tzInput = $<HTMLInputElement>("#tz");
+  const tzSelect = $<HTMLSelectElement>("#tz");
   const durSelect = $<HTMLSelectElement>("#dur");
   const stepSelect = $<HTMLSelectElement>("#step");
   const saveBtn = $<HTMLButtonElement>("#save");
@@ -131,7 +145,6 @@ export async function renderCreate(app: HTMLElement): Promise<void> {
   const errEl = $<HTMLDivElement>("#form-error");
   ownerInput.value = state.owner;
   ownerNameInput.value = state.ownerName;
-  tzInput.value = state.timezone;
 
   const updateSaveBtn = () => {
     saveBtn.disabled = !(state.name.trim() && emailLike(state.owner) && state.date);
@@ -286,13 +299,10 @@ export async function renderCreate(app: HTMLElement): Promise<void> {
   ownerNameInput.addEventListener("input", () => {
     state.ownerName = ownerNameInput.value;
   });
-  tzInput.addEventListener("input", () => {
-    state.timezone = tzInput.value;
-  });
   // Смена пояса пересчитывает превью на месте: сетка и окно доступности
-  // живут в часах указанной зоны ещё до сохранения профиля.
-  tzInput.addEventListener("change", async () => {
-    state.timezone = tzInput.value.trim();
+  // живут в часах указанной зоны ещё до сохранения профиля (US-6).
+  tzSelect.addEventListener("change", async () => {
+    state.timezone = tzSelect.value.trim();
     await refreshPreview();
   });
   ownerInput.addEventListener("change", async () => {
