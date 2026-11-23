@@ -30,6 +30,9 @@ on:
 permissions:
   contents: read
   issues: write
+  # anomalyco/opencode/github аутентифицируется через OIDC-обмен на opencode-app
+  # (как в opencode.yml); без этой записи шаг агента падает на получении токена.
+  id-token: write
 
 # Один аудит за раз: параллельные прогоны перерисовывают артефакты и гоном
 # дубли находок.
@@ -167,7 +170,7 @@ jobs:
               const dup = opens.find((i) => (i.body || "").includes(`fingerprint: \`${fp}\``));
               const marker = training ? "[учебный аудит] " : "";
               if (dup) {
-                await github.rest.issues.addComment({
+                await github.rest.issues.createComment({
                   owner, repo, issue_number: dup.number,
                   body: `${marker}🔁 Повторная находка \`${fp}\` (значение: ${f.value}, порог: ${f.threshold}). Прогон: ${runUrl}`,
                 });
@@ -209,7 +212,7 @@ jobs:
               });
               status = c.data;
             }
-            await github.rest.issues.addComment({
+            await github.rest.issues.createComment({
               owner, repo, issue_number: status.number,
               body: `### ${new Date().toISOString()} · режим \`${mode}\` · вердикт: \`${src}\`\n\n${summary}\n\nПрогон: ${runUrl} · артефакт: \`${artifact}\` (хранится 14 дней)`,
             });
