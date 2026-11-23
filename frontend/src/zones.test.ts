@@ -4,6 +4,7 @@ import {
   isValidIanaZone,
   resolveViewerZone,
   sortZonesByOffset,
+  todayInZone,
   zoneCatalog,
   zoneOffsetMinutes,
   zoneOptionLabel,
@@ -99,6 +100,23 @@ describe("zoneCatalog — живой справочник", () => {
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+describe("todayInZone — «сегодня» в поясе организатора (билет #9)", () => {
+  // Один и тот же момент: 22.11 22:00 UTC в Москве уже 23.11 (01:00).
+  const instant = new Date("2026-11-22T22:00:00Z");
+
+  it("дата берётся по часам переданной зоны, а не браузера", () => {
+    expect(todayInZone("UTC", instant)).toBe("2026-11-22");
+    expect(todayInZone("Europe/Moscow", instant)).toBe("2026-11-23");
+    expect(todayInZone("Asia/Kolkata", instant)).toBe("2026-11-23"); // 03:30 +5:30
+    expect(todayInZone("America/New_York", instant)).toBe("2026-11-22"); // 17:00 EST
+  });
+
+  it("битая/пустая зона — фолбэк на UTC (как defaultZone бэкенда)", () => {
+    expect(todayInZone("Europe/Moscw", instant)).toBe("2026-11-22");
+    expect(todayInZone("", instant)).toBe("2026-11-22");
   });
 });
 
