@@ -1,0 +1,96 @@
+name: issue-triage
+
+# Автотриаж новых обращений: агент выносит ровно один вердикт —
+# канонический триаж-лейбл (docs/agents/triage-labels.md) — и не делает
+# ничего, что меняло бы код или состояние issue, кроме лейбла и комментария.
+on:
+  issues:
+    types: [ opened ]
+
+# Минимальные права GITHUB_TOKEN: только чтение. Все записи в issue
+# агент выполняет от имени установленного opencode-app (OIDC-обмен),
+# его права задаются установкой приложения, а не этим workflow.
+permissions:
+  id-token: write
+  contents: read
+
+# Событие issues не приходит для PR; лишняя страховка от параллельных
+# прогонов на один и тот же issue.
+concurrency:
+  group: issue-triage-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  triage:
+    # фильтр 1: не триажим обращения от ботов
+    if: github.event.issue.user.type == 'User'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Filters (triage-лейблы, маркер, возраст аккаунта)
+        id: filter
+        uses: actions/github-script@v7
+        with:
+          result-encoding: string
+          script: |
+            const canonical = ['needs-triage', 'needs-info', 'ready-for-agent',
+                               'ready-for-human', 'wontfix'];
+            // фильтр 2: тикет уже размечен человеком/агентом — повторно не триажим
+            const labels = (context.payload.issue.labels ?? []).map((l) => l.name);
+            if (labels.some((l) => canonical.includes(l))) {
+              core.notice('Канонический триаж-лейбл уже проставлен — пропускаем');
+              return 'false';
+            }
+            // фильтр 3: явный маркер пропуска в заголовке
+            if (/\[skip-triage\]/i.test(context.payload.issue.title)) {
+              core.notice('[skip-triage] в заголовке — пропускаем');
+              return 'false';
+            }
+            // фильтр 4: анти-спам: аккаунт автора моложе 30 дней не триажим
+            const user = await github.rest.users.getByUsername({
+              username: context.payload.issue.user.login,
+            });
+            const days = (Date.now() - new Date(user.data.created_at)) / 86400000;
+            if (days < 30) {
+              core.notice(`Аккаунту автора ${days.toFixed(1)} дн. (<30) — пропускаем`);
+              return 'false';
+            }
+            return 'true';
+
+      - name: Checkout repository
+        if: steps.filter.outputs.result == 'true'
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Run OpenCode (triage verdict)
+        if: steps.filter.outputs.result == 'true'
+        uses: anomalyco/opencode/github@latest
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+        with:
+          model: opencode/qwen3.8-flash
+          prompt: |
+            Автоматический триаж issue #${{ github.event.issue.number }} этого репозитория.
+            Прочитай заголовок и тело issue из текущего события, при необходимости —
+            контекст репозитория (AGENTS.md, docs/agents/triage-labels.md, GLOSSARY.md).
+
+            Вынеси ровно один вердикт — канонический триаж-лейбл:
+            - ready-for-agent — тикет полностью специфицирован: ясная цель, однозначные
+              критерии приёмки, объём правок понятен без продуктовых вопросов; AFK-агент
+              может реализовать его как есть;
+            - ready-for-human — работа ясна, но требует действий человека (инфраструктура,
+              аккаунты, деплой, оплата, юрисдикция);
+            - needs-info — намерение понятно, но не хватает конкретики: сформулируй
+              в комментарии точный список вопросов;
+            - needs-triage — всё остальное (безопасный дефолт).
+
+            Действия и жёсткие ограничения:
+            1. Проставь ровно ОДИН лейбл из списка выше; чужие лейблы (enhancement,
+               bug и т.п.) не трогай.
+            2. Оставь короткий комментарий: выбранный лейбл и обоснование в 1–2
+               предложения (для needs-info — вопросы).
+            3. Запрещено: изменять или закрывать issue кроме лейбла, править код,
+               коммитить, создавать ветки и PR, проставлять wontfix (это решение
+               только человека — вместо него needs-triage).
+            4. Если канонический лейбл на issue уже есть — ничего не делай, завершишись.
